@@ -10,10 +10,12 @@ use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Laravel\Telescope\Contracts\EntriesRepository;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use TypeLang\Mapper\Bridge\Laravel\Debugbar\MapperCollector;
 use TypeLang\Mapper\Bridge\Laravel\Exception\InvalidConfigException;
 use TypeLang\Mapper\Bridge\Laravel\Profiler\ProfilerChain;
 use TypeLang\Mapper\Bridge\Laravel\Telescope\MapperRecorder;
+use TypeLang\Mapper\Bridge\Laravel\Tests\Stub\BlankSkipStub;
 use TypeLang\Mapper\Bridge\Laravel\Tests\Stub\CacheFactoryStub;
 use TypeLang\Mapper\Bridge\Laravel\Tests\Stub\DecimalCommaCoercerStub;
 use TypeLang\Mapper\Bridge\Laravel\Tests\Stub\ShoutingFormatterStub;
@@ -52,6 +54,48 @@ final class TypeLangMapperServiceProviderTest extends TestCase
 
         self::assertFalse($container->make('type-lang.mapper.api')->isDenormalizable('42', 'int'));
         self::assertTrue($container->make('type-lang.mapper.loose')->isDenormalizable('42', 'int'));
+    }
+
+    public function testMaxDepthIsAppliedAndOverriddenByNamedMapper(): void
+    {
+        $container = self::createContainer([
+            'max_depth' => 1,
+            'mappers' => ['api' => [], 'deep' => ['max_depth' => 2]],
+        ]);
+
+        self::assertFalse($container->make('type-lang.mapper')->isNormalizable([[1]]));
+        self::assertFalse($container->make('type-lang.mapper.api')->isNormalizable([[1]]));
+        self::assertTrue($container->make('type-lang.mapper.deep')->isNormalizable([[1]]));
+    }
+
+    public function testExpressionLanguageOfConfigGivesFunctionsToSkipExpressions(): void
+    {
+        $language = new ExpressionLanguage();
+        $language->register(
+            'blank',
+            static fn(string $value): string => "({$value} === '')",
+            static fn(array $values, mixed $value): bool => $value === '',
+        );
+
+        $container = self::createContainer(
+            ['expression_language' => 'app.expressions'],
+            configure: static fn(Container $container) => $container->instance('app.expressions', $language),
+        );
+
+        self::assertSame(
+            ['name' => 'John'],
+            $container->make('type-lang.mapper')->normalize(new BlankSkipStub()),
+        );
+    }
+
+    public function testServiceOfExpressionLanguageIsChecked(): void
+    {
+        $this->expectException(InvalidConfigException::class);
+
+        self::createContainer(
+            ['expression_language' => 'app.expressions'],
+            configure: static fn(Container $container) => $container->instance('app.expressions', new \stdClass()),
+        )->make('type-lang.mapper');
     }
 
     public function testNamedMapperTakesItsExtensionsAndInheritedOnes(): void
@@ -323,6 +367,11 @@ final class TypeLangMapperServiceProviderTest extends TestCase
         yield 'integer of named mapper' => [
             ['mappers' => ['api' => ['max_violations' => 0]]],
             'Config "type-lang-mapper.mappers.api.max_violations" must be an integer of at least 1, but int given',
+        ];
+
+        yield 'max depth' => [
+            ['max_depth' => 0],
+            'Config "type-lang-mapper.max_depth" must be an integer of at least 1, but int given',
         ];
 
         yield 'profiler flag' => [

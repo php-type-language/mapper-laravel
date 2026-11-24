@@ -26,9 +26,18 @@ return [
     // Number of fields of a class shown in messages, all of them by default
     'expected_type_max_fields' => null,
 
+    // Number of levels of nested objects a normalization goes through,
+    // 512 by default
+    'max_depth' => null,
+
     // Built-in naming strategy (snake_case, camelCase, PascalCase,
     // SCREAMING_SNAKE_CASE, kebab-case) or a service
     'naming' => null,
+
+    // Service of Symfony\Component\ExpressionLanguage\ExpressionLanguage with
+    // the functions of the skip expressions, a language with the default
+    // functions by default
+    'expression_language' => null,
 
     // Services of the extensions, the classes or the container ids
     'types' => [],
